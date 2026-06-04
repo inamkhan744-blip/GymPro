@@ -1,0 +1,12 @@
+streamlit>=1.35.0
+Pillow>=10.0.0
+qrcode>=7.4
+SQLAlchemy>=2.0
+psycopg2-binary>=2.9
+bcrypt>=4.0
+streamlit
+streamlit-mic-recorder
+groq
+openai
+# Agar aap database ke liye kuch use kar rahe hain (jaise pymysql ya sqlite), wo bhi yahan likhein
+edge_tts

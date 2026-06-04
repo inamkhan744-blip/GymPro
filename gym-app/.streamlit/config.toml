@@ -1,0 +1,23 @@
+[server]
+port = 5000
+headless = true
+address = "0.0.0.0"
+enableCORS = false
+enableXsrfProtection = false
+maxUploadSize = 10
+
+[browser]
+gatherUsageStats = false
+
+[client]
+# Hide Streamlit's automatic page navigation. Files in `pages/` are still
+# loaded and routed by app.py — we just don't want them listed in the
+# sidebar (we have our own custom nav with sections + role gating).
+showSidebarNavigation = false
+
+[theme]
+primaryColor = "#7C3AED"
+backgroundColor = "#0F172A"
+secondaryBackgroundColor = "#1E293B"
+textColor = "#E2E8F0"
+font = "sans serif"

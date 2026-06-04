@@ -1,0 +1,39 @@
+​"I want to upgrade my software with the following features. Please implement them all at once and ensure they work together."
+1
+Please add a WhatsApp Automation feature to my Gym Management System. I want to use my own personal WhatsApp number via WhatsApp Web automation (using a library like pywhatkit).
+​Requirements:
+​Auto-Reminders: Link it with the get_expiring_members function. It should automatically send a reminder message to members whose fees are expiring in 5 days.
+​Fee Receipts: Every time a new fee record is added via add_fee_record, send an automated confirmation message to that member.
+2
+​Message Template: The messages should include the Member's Name, Gym Name, and the Due Date/Amount.
+​"Please update the Member model so that the phone number column is unique. If I try to add a new member with a phone number that already exists in the database, the system should show an error message: 'This phone number is already registered' and prevent the entry."
+3
+​**"Please add an 'Automatic Absentee Reminder' feature.
+​Create a function that checks the Attendance table daily.
+​If an Active member has not marked attendance for more than 3 consecutive days, automatically send them a WhatsApp message saying we miss them at the gym.
+​Use the same WhatsApp automation logic we set up earlier."**
+​"When sending the 'Absentee' or 'Reminder' messages, please ask the AI to include a short, motivational health tip or a fitness fact at the end of the message. The tip should be different each time to keep the members engaged."
+4
+"Please update the Complaint module with a WhatsApp trigger. Whenever the status of a complaint is changed to 'Resolved' by the Admin, it should automatically send a WhatsApp message to the member. Use the existing WhatsApp automation logic and include the member's name and the complaint subject in the message."
+5
+​"Please add a 'Member Progress Tracker' to record weight and measurements monthly, and auto-send a progress graph via WhatsApp. Also, implement a 'Peak Hour Analytics' dashboard so I can see the busiest times for both gyms."
+6
+​"I want to upgrade my Gym Management System with these new features:
+​Member Progress Tracker: Add fields to record 'Weight' and 'Body Measurements' monthly. Automatically generate a progress graph image and send it to the member via WhatsApp.
+​Peak Hour Analytics: Create a dashboard for me (Director) that shows a graph of gym entry times so I can see which hours are the busiest.
+​Automated Birthday Wishes: Add a 'Date of Birth' field in the member registration. The system should check every morning and send a personalized 'Happy Birthday' message via WhatsApp with a special offer.
+7
+​"Please add a 'Stock & Inventory Management' module to the system:
+​Model: Create a Stock table with fields for Item Name, Category, Purchase Price, Sale Price, and Quantity.
+​Sales: Add a 'Point of Sale' feature where staff can sell items to members. This should automatically decrease the stock quantity and add the sale amount to the 'Daily Revenue'.
+​Alerts: Highlight items in the dashboard if their quantity falls below a certain limit (e.g., less than 5).
+​Reports: Add a section for me to see total sales and profit specifically from the inventory."
+8
+​"I want to make my gym 100% unique. Please add these features:
+​Member Wallet: A digital wallet for each member to buy supplements/water without cash.
+​Weekly Leaderboard: A system that ranks members based on their attendance and sends the top 5 list to everyone on WhatsApp.
+​Smart Grocery List: Automatically convert the assigned diet plan into a weekly shopping list for the member."
+9
+​"1. Streak System: Implement a workout streak counter. Send a motivational WhatsApp message if a member is about to break their streak.
+2. Daily Routine: Add a feature where members can request a daily exercise plan via WhatsApp based on their fitness goal."
+​"Check the existing database (gym_pro.db) and update the tables without losing any old member data."
