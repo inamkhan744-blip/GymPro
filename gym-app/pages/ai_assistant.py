@@ -1,72 +1,178 @@
-import sys
-import os
-import io
 import streamlit as st
-from streamlit_mic_recorder import mic_recorder
-import speech_recognition as sr
-from pages.ai_functions import get_ai_response
-import edge_tts
 import asyncio
+import edge_tts
+import io
+import base64
+import yt_dlp
+import os
+import os
+from pages.ai_functions import get_ai_response
+# ---------------- PAGE CONFIG ----------------
+st.set_page_config(page_title="Gym AI Assistant", layout="wide")
 
+
+# ---------------- HEADER ----------------
+def set_bg():
+    st.markdown("""
+    <div style="
+        background: linear-gradient(90deg,#0f172a,#1e293b);
+        padding:20px;
+        border-radius:15px;
+        color:white;
+        text-align:center;">
+        <h2>🏋️ Gym AI Assistant</h2>
+        <p>Smart Urdu AI + Music + Voice System</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+# ---------------- BACKGROUND MUSIC ----------------
+def get_music(song):
+    query = f"ytsearch1:{song}"
+
+    ydl_opts = {
+        "format": "bestaudio/best",
+        "quiet": True,
+        "noplaylist": True
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(query, download=False)
+
+        video = info["entries"][0]
+
+        title = video["title"]
+        video_url = f"https://www.youtube.com/watch?v={video['id']}"
+        audio_url = video["url"]
+
+        return title, video_url, audio_url
+
+# ---------------- MUSIC SEARCH ----------------
+def play_bg_music():
+    try:
+        music_file = "gym_music.mp3"
+
+        if not os.path.exists(music_file):
+            return
+
+        with open(music_file, "rb") as f:
+            data = f.read()
+
+        b64 = base64.b64encode(data).decode()
+
+        st.markdown(
+            f"""
+            <audio autoplay loop controls>
+                <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
+            </audio>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    except Exception as e:
+        st.error(f"Background Music Error: {e}")
+
+# ---------------- MUSIC PLAYER ----------------
+def music_player():
+    st.markdown("## 🎧 Gym Music Player")
+
+    song = st.text_input(
+        "🔎 Song search karo",
+        key="music_search_input"
+    )
+
+    col1, col2 = st.columns(2)
+
+    if col1.button("🎥 Play Video", key="play_video_btn"):
+
+        if not song:
+            st.warning("Pehle song likho")
+            return
+
+        try:
+            title, video_url, audio_url = get_music(song)
+
+            st.success(f"🎥 Video: {title}")
+
+            st.video(video_url)
+
+        except Exception as e:
+            st.error(f"Video error: {e}")
+
+    if col2.button("🎵 Play Audio", key="play_audio_btn"):
+
+        if not song:
+            st.warning("Pehle song likho")
+            return
+
+        try:
+            title, video_url, audio_url = get_music(song)
+
+            st.success(f"🎧 Audio: {title}")
+
+            st.audio(audio_url)
+
+        except Exception as e:
+            st.error(f"Audio error: {e}")
+
+# ---------------- AI VOICE ----------------
 async def generate_audio(text):
-    voice = "ur-PK-AsadNeural" 
-    communicate = edge_tts.Communicate(text, voice)
+    communicate = edge_tts.Communicate(str(text), "ur-PK-AsadNeural")
+
     audio_fp = io.BytesIO()
+
     async for chunk in communicate.stream():
         if chunk["type"] == "audio":
             audio_fp.write(chunk["data"])
+
     audio_fp.seek(0)
     return audio_fp
 
-def transcribe_audio(audio_bytes):
-    if audio_bytes is None or 'bytes' not in audio_bytes:
-        return None
+def run_audio(text):
     try:
-        r = sr.Recognizer()
-        audio_data = sr.AudioData(audio_bytes['bytes'], sample_rate=48000, sample_width=2)
-        # FIX: return aur function call ko ek hi line par likha hai
-        return 
-        r.recognize_google(audio_data, language="ur-PK")
-    except Exception:
+        return asyncio.run(generate_audio(str(text)))
+    except Exception as e:
+        print("Audio error:", e)
         return None
 
-def render(gym_id, role):
-    st.title("🤖 AI Gym Assistant")
-    
-    if "ai_messages" not in st.session_state:
-        st.session_state.ai_messages = []
+# ---------------- MAIN UI 
+def render(gym_id=None, role="staff"):
 
-    # Chat history dikhayein
-    for msg in st.session_state.ai_messages:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
-            if "audio" in msg and msg["audio"]:
-                st.audio(msg["audio"], format="audio/mp3")
+    set_bg()
+    music_player()
 
-    # Inputs
-    audio = mic_recorder(start_prompt="🎙️ Bol kar poochein", stop_prompt="Stop", key='ai_mic_page')
-    prompt = st.chat_input("Apna sawal likhein...")
+    st.divider()
+    st.subheader("🤖 Gym AI Chat")
 
-    user_input = None
-    if audio:
-        with st.spinner("Sun raha hoon..."):
-            user_input = transcribe_audio(audio)
-    elif prompt:
-        user_input = prompt
+    # INIT chat
+    if "chat" not in st.session_state:
+        st.session_state.chat = []
 
-    # Response logic
+    # SHOW CHAT
+    for role_, msg in st.session_state.chat:
+        with st.chat_message(role_):
+            st.write(msg)
+
+    # INPUT
+    user_input = st.chat_input("💬 Gym AI se poochain...")
+
     if user_input:
-        if not st.session_state.ai_messages or st.session_state.ai_messages[-1]["content"] != user_input:
-            st.session_state.ai_messages.append({"role": "user", "content": user_input})
-            
-            with st.spinner("Soch raha hoon..."):
-                ai_text, _ =   get_ai_response(user_input)
-                # Edge-TTS se saaf Pakistani Urdu generate karein
-                ai_audio = asyncio.run(generate_audio(ai_text))
-            
-            st.session_state.ai_messages.append({
-                "role": "assistant", 
-                "content": ai_text,
-                "audio": ai_audio
-            })
-            st.rerun()
+
+        result = get_ai_response(user_input)
+
+        if isinstance(result, tuple):
+            answer = str(result[0])
+        else:
+            answer = str(result)
+
+        st.session_state.chat.append(("user", user_input))
+        st.session_state.chat.append(("assistant", answer))
+
+        audio = run_audio(answer)
+        if audio:
+            st.audio(audio, format="audio/mp3")
+
+    # ❌ NO rerun here (IMPORTANT FIX)
+
+# ---------------- RUN ----------------
+if __name__ == "__main__":
+    render()

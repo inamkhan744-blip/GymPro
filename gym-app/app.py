@@ -3,13 +3,90 @@ import sqlite3
 import sys
 import os
 
-# Path setting
 sys.path.insert(0, os.path.dirname(__file__))
 
 
 import database as db
 import auth
 import styles
+import base64
+#from ai_function import get_ai_response1111111
+
+def play_persistent_music():
+    music_file = "gym_music.mp3"
+
+    if not os.path.exists(music_file):
+        return
+
+    with open(music_file, "rb") as f:
+        audio_b64 = base64.b64encode(f.read()).decode()
+
+    st.markdown(
+        f"""
+        <audio id="globalGymMusic" controls loop>
+            <source src="data:audio/mp3;base64,{audio_b64}" type="audio/mp3">
+        </audio>
+
+        <script>
+        const audio = document.getElementById("globalGymMusic");
+
+        // Restore saved position
+        const savedTime = localStorage.getItem("gym_music_time");
+        if (savedTime) {{
+            audio.currentTime = parseFloat(savedTime);
+        }}
+
+        // Restore play state
+        const shouldPlay = localStorage.getItem("gym_music_playing");
+
+        if (shouldPlay === "true") {{
+            audio.play().catch(() => {{}});
+        }}
+
+        // Save current position every second
+        setInterval(() => {{
+            localStorage.setItem(
+                "gym_music_time",
+                audio.currentTime
+            );
+        }}, 1000);
+
+        audio.addEventListener("play", () => {{
+            localStorage.setItem(
+                "gym_music_playing",
+                "true"
+            );
+        }});
+
+        audio.addEventListener("pause", () => {{
+            localStorage.setItem(
+                "gym_music_playing",
+                "false"
+            );
+        }});
+        </script>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+import pandas as pd
+
+conn = sqlite3.connect('gym_pro.db')
+
+# Tables check karein
+tables = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table'", conn)
+print("Available tables:", tables)
+
+# Members table structure
+try:
+    members = pd.read_sql_query("SELECT * FROM members LIMIT 5", conn)
+    print("\nMembers data:", members)
+except:
+    print("Members table not found")
+
+conn.close()
+#111111
 from pages import (admin_dashboard, setup, members, attendance, fee_collection, expenses, 
                    whatsapp, auditor, user_management, reports, membership_card, progress, 
                    inventory, complaints, message_center,
@@ -23,7 +100,7 @@ from pages import (admin_dashboard, setup, members, attendance, fee_collection, 
 st.set_page_config(page_title="GymPro", page_icon="🏋️", layout="wide")
 db.init_db()
 styles.inject_css()
-
+play_persistent_music()
 # ── Auth Gate ──
 if not auth.require_login():
     auth.login_page()
@@ -293,6 +370,5 @@ elif page == "Complaints":       complaints.render(gid, role)
 elif page == "Audit":            auditor.render(gid, role, username)
 elif page == "User Management":  user_management.render(user_id)
 elif page == "AI Assistant":
-    from pages import ai_assistant
+    st.write("DEBUG: AI PAGE OPENED")
     ai_assistant.render(gid, role)
-

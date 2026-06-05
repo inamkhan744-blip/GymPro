@@ -11,6 +11,9 @@ from sqlalchemy.orm import declarative_base, relationship, sessionmaker, Session
 from sqlalchemy import event
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
+#111111111
+# Test script - separate file mein run karein
+
 # ── Engine Path Configurations ──────────────────────────────────────────────────
 DATABASE_URL = os.environ.get("DATABASE_URL")
 IS_POSTGRES = bool(DATABASE_URL)
@@ -1488,15 +1491,17 @@ def get_member_by_id(member_id):
         db.close()
 
 #1111111+
+# ── FIX: Proper Database Access ──────────────────────────
 def get_member_phone(name):
+    db = get_db() # SQLAlchemy session use karein
     try:
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        # Naam ke zariye phone number dhundna
-        cursor.execute("SELECT phone FROM members WHERE name = ?", (name,))
-        result = cursor.fetchone()
-        conn.close()
-        return result[0] if result else None
-    except Exception:
+        # 'name' ki jagah 'full_name' column use karein
+        member = db.query(Member).filter(Member.full_name == name).first()
+        return member.phone if member else None
+    except Exception as e:
+        print(f"Error finding phone: {e}")
         return None
+    finally:
+        db.close()
+
 #11111111

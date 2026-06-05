@@ -163,3 +163,4 @@ def page_header(icon, title, sub=""):
 
 def badge(text, color="gray"):
     return f'<span class="badge badge-{color}">{text}</span>'
+

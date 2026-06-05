@@ -10,3 +10,4 @@ groq
 openai
 # Agar aap database ke liye kuch use kar rahe hain (jaise pymysql ya sqlite), wo bhi yahan likhein
 edge_tts
+yt-dlp
