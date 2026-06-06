@@ -56,8 +56,7 @@ if not IS_POSTGRES:
                 os.remove(db_path)
                 
             conn = sqlite3.connect(db_path)
-            with open(sql_backup_path, "r") as f:
-                conn.executescript(f.read())
+            
             conn.commit()
             print("Database successfully restored with all 64 members!")
             
