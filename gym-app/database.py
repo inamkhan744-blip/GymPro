@@ -2,6 +2,7 @@
 import os
 import hashlib
 import uuid
+import sqlite3
 from datetime import datetime, date, timedelta
 from sqlalchemy import (
     create_engine, Column, Integer, String, Float, Date,
@@ -1504,3 +1505,19 @@ def get_member_phone(name):
         db.close()
 
 #11111111
+def get_todays_fees(gym_id):
+    db = get_db() # SQLAlchemy session use karein
+    try:
+        today_str = date.today().isoformat()
+        # 'FeeRecord' model use karein, tablename automatically 'fee_records' handle ho jayega
+        results = db.query(FeeRecord.amount).filter(
+            FeeRecord.gym_id == gym_id,
+            FeeRecord.payment_date == today_str
+        ).all()
+        # Returns a list of amounts [1000.0, 500.0]
+        return [r[0] for r in results]
+    except Exception as e:
+        print(f"DEBUG Error in get_todays_fees: {e}")
+        return []
+    finally:
+        db.close()

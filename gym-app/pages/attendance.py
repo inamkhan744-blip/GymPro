@@ -215,112 +215,78 @@ def _get_ai_traffic_insights(recent_scans):
     }
 
 
-# ── NEW: AI SMART REGISTRATIONS, FEES AND SECURITY AUDIT PANEL ────────────────
+# ── NEW: AI SMART REGISTRATIONS, FEES AND 
 def render_ai_dashboard_intel(sel_gid):
-    """Generates the absolute high-security AI tracking panel with hidden photo dropdown"""
     st.markdown("### 🤖 GymPro AI Smart Security & Analytics Intel")
-
+    
+    # 1. Zaroori variables define karein
+    from datetime import date
+    import os
+    import base64
+    today_str = date.today().isoformat()
+    
+    # 2. Fresh Data Fetch karein
     recent_scans = db.get_recent_scans(gym_id=sel_gid, limit=100, today_only=True)
     all_members = db.get_members(gym_id=sel_gid)
-    today_str = date.today().isoformat()
-
-    # 1. AI Text Assistant Integration (Summary Text Blocks)
-    st.markdown("#### ✍️ AI Registrations & Fees Smart Summary")
-
+    active_members = [m for m in all_members if (m.status or '').lower() == 'active']
+    todays_fees = db.get_todays_fees(gym_id=sel_gid)
+    
+    # Expiring soon logic
     expiring_soon = [m for m in all_members if m.expiry_date and 
                      (date.fromisoformat(m.expiry_date) - date.today()).days <= 7 and
                      (date.fromisoformat(m.expiry_date) - date.today()).days >= 0]
-
     revenue_risk = len(expiring_soon) * 1500 
-    total_members_count = len(all_members)
-    active_members_count = len([m for m in all_members if (m.status or '').lower() == 'active'])
 
+    # 3. AI Summary Render
     col_text1, col_text2 = st.columns(2)
     with col_text1:
-        st.info(
-            f"✍️ **AI Registration Summary:**\n\n"
-            f"Aap ke database mein is waqt kul **{total_members_count} members** registered hain, jin mein se **{active_members_count} active** hain. "
-            f"AI ne check kiya hai ke pichle kuch dino mein naye ladkon ka rujuhaat behtar hai. Sab se aakhri active registration record abhi verification phase mein chal raha."
-        )
-
+        st.info(f"✍️ **AI Registration Summary:**\n\nIs waqt total **{len(all_members)} members** registered hain, jin mein se **{len(active_members)} active** hain.")
     with col_text2:
-        st.success(
-            f"💰 **AI Fee Collection Summary:**\n\n"
-            f"System mein aaj ke din total fees entries record ho chuki hain. AI ne check kiya hai ke counter par entry transactions sahi chal rahi hain. "
-            f"Lekin dhyan rahe ke kuch entries boht kam amount (jaise 0.01) par test ki gayi hain, agar yeh live counter par staff ne kiya hai toh un se poochein."
-        )
+        st.success(f"💰 **AI Fee Collection Summary:**\n\nAaj ki total collection: **PKR {sum(todays_fees) if todays_fees else 0:,}**.")
 
-    # 2. Fraud Monitoring Panel (Option 2: Compact Dropdown with Member Photos)
+    # 4. Fraud Monitoring Panel
     st.markdown("#### 🚨 Fraud & Security Monitor")
-
     fraud_members = []
+    
     if recent_scans:
         for scan in recent_scans:
             member_match = db.get_member_by_serial(scan["serial"], gym_id=sel_gid)
             if member_match and member_match.expiry_date:
-                if member_match.expiry_date < today_str:
-                    # Duplicate check se bachne ke liye taake ek hi banda baar baar show na ho
-                    if member_match.id not in [m.id for m in fraud_members]:
-                        fraud_members.append(member_match)
+                if member_match.expiry_date < today_str and member_match.id not in [m.id for m in fraud_members]:
+                    fraud_members.append(member_match)
 
-        if fraud_members:
-            st.error(f"🚨 ALERT: Aaj counter par {len(fraud_members)} Unpaid Members ko entry di gayi hai!")
-
-            with st.expander("🔍 Click karein aur Unpaid Members ke Naam aur Pictures dekhein"):
-                for m in fraud_members:
-                    photo_html = ""
-                    if m.photo_path and os.path.exists(m.photo_path):
-                        try:
-                            with open(m.photo_path, "rb") as f:
-                                encoded = base64.b64encode(f.read()).decode()
-                            photo_html = f'<img src="data:image/jpeg;base64,{encoded}" style="width:60px; height:60px; border-radius:50%; object-fit:cover; border:2px solid #EF4444; margin-right:15px;">'
-                        except Exception:
-                            photo_html = '<div style="width:60px; height:60px; border-radius:50%; background:#334155; display:inline-block; text-align:center; line-height:60px; font-size:20px; margin-right:15px;">👤</div>'
-                    else:
+    # RENDER: Sirf ek baar logic chalayein
+    if fraud_members:
+        st.error(f"🚨 ALERT: Aaj counter par {len(fraud_members)} Unpaid Members ko entry di gayi hai!")
+        with st.expander("🔍 Click karein aur Unpaid Members ke Naam aur Pictures dekhein"):
+            for m in fraud_members:
+                photo_html = ""
+                if m.photo_path and os.path.exists(m.photo_path):
+                    try:
+                        with open(m.photo_path, "rb") as f:
+                            encoded = base64.b64encode(f.read()).decode()
+                        photo_html = f'<img src="data:image/jpeg;base64,{encoded}" style="width:60px; height:60px; border-radius:50%; object-fit:cover; border:2px solid #EF4444; margin-right:15px;">'
+                    except:
                         photo_html = '<div style="width:60px; height:60px; border-radius:50%; background:#334155; display:inline-block; text-align:center; line-height:60px; font-size:20px; margin-right:15px;">👤</div>'
+                else:
+                    photo_html = '<div style="width:60px; height:60px; border-radius:50%; background:#334155; display:inline-block; text-align:center; line-height:60px; font-size:20px; margin-right:15px;">👤</div>'
 
-                    st.markdown(
-                        f"""
-                        <div style="display:flex; align-items:center; background-color:#1E293B; padding:10px 15px; border-radius:10px; margin-bottom:8px; border-left:5px solid #EF4444;">
-                            {photo_html}
-                            <div style="flex-grow:1;">
-                                <div style="font-weight:bold; color:#F8FAFC; font-size:1.1rem;">{m.full_name}</div>
-                                <div style="color:#94A3B8; font-size:0.9rem;">ID: {m.serial_number} | <span style="color:#FCA5A5;">Expired: {m.expiry_date}</span></div>
-                            </div>
-                            <div style="color:#EF4444; font-weight:bold; font-size:0.9rem; background:rgba(239,68,68,0.1); padding:4px 10px; border-radius:6px;">
-                                Fee Unpaid!
-                            </div>
+                st.markdown(
+                    f"""
+                    <div style="display:flex; align-items:center; background-color:#1E293B; padding:10px 15px; border-radius:10px; margin-bottom:8px; border-left:5px solid #EF4444;">
+                        {photo_html}
+                        <div style="flex-grow:1;">
+                            <div style="font-weight:bold; color:#F8FAFC; font-size:1.1rem;">{m.full_name}</div>
+                            <div style="color:#94A3B8; font-size:0.9rem;">ID: {m.serial_number} | <span style="color:#FCA5A5;">Expired: {m.expiry_date}</span></div>
                         </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
-        else:
-            st.success("✅ **AI Security Audit:** Clear! Aaj kisi unpaid member ki ghair-kanooni entry counter se pass nahi hui.")
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
     else:
-        st.success("✅ **AI Security Audit:** Clear! Aaj koi check-in record nahi mila.")
+        st.success("✅ **AI Security Audit:** Clear! Aaj koi unpaid member entry nahi le paya.")
 
-    # 3. Traffic Reality & Future Revenue Risk
-    st.markdown("#### 🔮 Business Projections & Live Risk Matrix")
-    ai_traffic = _get_ai_traffic_insights(recent_scans)
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric(
-        label="Live Traffic Matrix vs Average", 
-        value=f"{ai_traffic['today_actual']} Inside Now", 
-        delta=f"Normal Pattern: {ai_traffic['normal_average']}"
-    )
-    c2.metric(
-        label="🔮 Next Hour Load Prediction", 
-        value=f"~ {ai_traffic['next_predicted']} Members",
-        delta="AI Projected Rush"
-    )
-    c3.metric(
-        label="⚠️ 7-Day Fee Collection Target", 
-        value=f"PKR {revenue_risk:,}", 
-        delta=f"{len(expiring_soon)} Members Expiring",
-        delta_color="inverse"
-    )
-    st.divider()
 
 
 # ── Page ─────────────────────────────────────────────────────────────────────
