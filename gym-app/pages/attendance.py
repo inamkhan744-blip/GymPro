@@ -233,9 +233,13 @@ def render_ai_dashboard_intel(sel_gid):
     
     # Expiring soon logic
     expiring_soon = [m for m in all_members if m.expiry_date and 
-                     (date.fromisoformat(m.expiry_date) - date.today()).days <= 7 and
-                     (date.fromisoformat(m.expiry_date) - date.today()).days >= 0]
+         (date.fromisoformat(m.expiry_date) - date.today()).days <= 7 and
+         (date.fromisoformat(m.expiry_date) - date.today()).days >= 0]
+
     revenue_risk = len(expiring_soon) * 1500 
+    total_members_count = len(all_members)
+    active_members_count = len([m for m in all_members if (m.status or '').lower() == 'active'])
+
 
     # 3. AI Summary Render
     col_text1, col_text2 = st.columns(2)
@@ -287,6 +291,28 @@ def render_ai_dashboard_intel(sel_gid):
         st.success("✅ **AI Security Audit:** Clear! Aaj koi unpaid member entry nahi le paya.")
 
 
+    # 3. Traffic Reality & Future Revenue Risk
+    st.markdown("#### 🔮 Business Projections & Live Risk Matrix")
+    ai_traffic = _get_ai_traffic_insights(recent_scans)
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric(
+        label="Live Traffic Matrix vs Average", 
+        value=f"{ai_traffic['today_actual']} Inside Now", 
+        delta=f"Normal Pattern: {ai_traffic['normal_average']}"
+    )
+    c2.metric(
+        label="🔮 Next Hour Load Prediction", 
+        value=f"~ {ai_traffic['next_predicted']} Members",
+        delta="AI Projected Rush"
+    )
+    c3.metric(
+        label="⚠️ 7-Day Fee Collection Target", 
+        value=f"PKR {revenue_risk:,}", 
+        delta=f"{len(expiring_soon)} Members Expiring",
+        delta_color="inverse"
+    )
+    st.divider()
 
 
 # ── Page ─────────────────────────────────────────────────────────────────────

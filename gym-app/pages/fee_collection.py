@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import io
+import os
 import uuid
 from datetime import date, timedelta
 import database as db
@@ -64,39 +65,143 @@ def render(gym_id, role, current_user):
 
     # ── SECTION 1: ADD NEW RECORD ──────────────────────────────────────────────
     st.markdown("### ➕ Collect Fee / Add New Payment Record")
+
     gym_opts = {g.name: g.id for g in gyms}
     default_gym = next((g.name for g in gyms if g.id == gym_id), gyms[0].name)
 
+    # ── GYM + SEARCH + MEMBER SELECTION (FORM SE BAHAR) ──
+    c1, c2 = st.columns(2)
+
+    with c1:
+        gym_sel = st.selectbox(
+            "Gym *",
+            list(gym_opts.keys()),
+            index=list(gym_opts.keys()).index(default_gym),
+            key="cf_gym_sel"
+        )
+        sel_gym_id = gym_opts[gym_sel]
+        members = db.get_members(gym_id=sel_gym_id)
+
+        # 🔍 SEARCH BAR
+        search_query = st.text_input(
+            "🔍 Search Member (Name or Serial)",
+            key="cf_search",
+            placeholder="Type name or serial number..."
+        )
+
+        # Filter members
+        if search_query:
+            q = search_query.lower().strip()
+            filtered_members = [
+                m for m in members
+                if q in m.full_name.lower() or q in str(m.serial_number).lower()
+            ]
+        else:
+            filtered_members = members
+
+        mem_opts = {f"{m.serial_number} — {m.full_name}": m.id for m in filtered_members}
+
+        sel_mem = None
+        member_id = None
+
+        if not members:
+            st.warning("No members in this gym.")
+        elif not mem_opts:
+            st.warning(f"No members match '{search_query}'. Try different keywords.")
+        else:
+            mem_sel = st.selectbox("Member *", list(mem_opts.keys()), key="cf_member_sel")
+            member_id = mem_opts[mem_sel]
+            sel_mem = next((m for m in filtered_members if m.id == member_id), None)
+
+            if sel_mem:
+                # 🔍 DEBUG: Member attributes dikhayein
+                with st.expander("🔍 DEBUG — Member Attributes (click to view)"):
+                    st.json({k: str(v) for k, v in vars(sel_mem).items() if not k.startswith('_')})
+
+                # 🖼️ MEMBER PICTURE & INFO
+                pic_col, info_col = st.columns([1, 2])
+
+                with pic_col:
+                    member_photo = (
+                        getattr(sel_mem, 'photo', None)
+                        or getattr(sel_mem, 'photo_path', None)
+                        or getattr(sel_mem, 'picture', None)
+                        or getattr(sel_mem, 'image', None)
+                        or getattr(sel_mem, 'photo_url', None)
+                        or getattr(sel_mem, 'profile_picture', None)
+                    )
+
+                    photo_shown = False
+
+                    if member_photo:
+                        try:
+                            if isinstance(member_photo, bytes):
+                                st.image(member_photo, width=120)
+                                photo_shown = True
+                            elif isinstance(member_photo, str) and member_photo.strip():
+                                if member_photo.startswith(('http://', 'https://', 'data:image')):
+                                    st.image(member_photo, width=120)
+                                    photo_shown = True
+                                elif os.path.exists(member_photo):
+                                    st.image(member_photo, width=120)
+                                    photo_shown = True
+                                else:
+                                    for folder in ['', 'uploads/', 'photos/', 'static/', 'gym-app/uploads/', 'gym-app/photos/']:
+                                        full_path = os.path.join(folder, member_photo)
+                                        if os.path.exists(full_path):
+                                            st.image(full_path, width=120)
+                                            photo_shown = True
+                                            break
+                        except Exception:
+                            photo_shown = False
+
+                    if not photo_shown:
+                        st.markdown(
+                            "<div style='width:120px;height:120px;background:linear-gradient(135deg,#667eea,#764ba2);"
+                            "border-radius:50%;display:flex;align-items:center;justify-content:center;"
+                            "font-size:50px;color:white;box-shadow:0 4px 10px rgba(0,0,0,0.2);'>👤</div>",
+                            unsafe_allow_html=True
+                        )
+
+                with info_col:
+                    st.markdown(f"**👤 Name:** {sel_mem.full_name}")
+                    st.markdown(f"**🔢 Serial:** {sel_mem.serial_number}")
+                    st.caption(f"💵 Standard fee: **PKR {sel_mem.fee_amount:,.2f}**")
+                    st.caption(f"📅 Expires: {sel_mem.expiry_date or '—'}")
+
+    # ── FORM (Payment details + Submit) ──
     with st.form("collect_fee_form", clear_on_submit=True):
-        c1, c2 = st.columns(2)
-        with c1:
-            gym_sel = st.selectbox("Gym *", list(gym_opts.keys()), index=list(gym_opts.keys()).index(default_gym), key="cf_gym_sel")
-            sel_gym_id = gym_opts[gym_sel]
-            members = db.get_members(gym_id=sel_gym_id)
-            mem_opts = {f"{m.serial_number} — {m.full_name}": m.id for m in members}
-            if not mem_opts:
-                st.warning("No members in this gym.")
-                member_id = None
-            else:
-                mem_sel = st.selectbox("Member *", list(mem_opts.keys()), key="cf_member_sel")
-                member_id = mem_opts[mem_sel]
-                sel_mem = next((m for m in members if m.id == member_id), None)
-                if sel_mem:
-                    st.caption(f"Standard fee: **PKR {sel_mem.fee_amount:,.2f}** · Expires: {sel_mem.expiry_date or '—'}")
-            amount = st.number_input("Amount (PKR) *", min_value=0.01, step=5.0, format="%.2f", key="cf_amount")
+        f_c1, f_c2 = st.columns(2)
+
+        with f_c1:
+            st.markdown("**Payment Details**")
+            amount = st.number_input(
+                "Amount (PKR) *",
+                min_value=0.01,
+                value=float(sel_mem.fee_amount) if sel_mem else 0.01,
+                step=5.0,
+                format="%.2f",
+                key="cf_amount"
+            )
             payment_method = st.selectbox("Payment Method *", db.PAYMENT_METHODS, key="cf_method")
 
-        with c2:
+        with f_c2:
+            st.markdown("**Period & Date**")
             payment_date = st.date_input("Payment Date *", value=date.today(), key="cf_date")
             period_start = st.date_input("Period Start", value=date.today(), key="cf_period_start")
             period_end = st.date_input("Period End", value=date.today() + timedelta(days=30), key="cf_period_end")
-            notes = st.text_area("Notes", height=100, key="cf_notes")
 
-        # BUTTON KA NAAM BADAL KAR RECORD & PRINT SLIP KAR DIYA
-        # BUTTON KA NAAM BADAL KAR RECORD & PRINT SLIP KAR DIYA
-        if st.form_submit_button("✅ Record Payment & Print Slip", type="primary", use_container_width=True):
+        notes = st.text_area("Notes", height=80, key="cf_notes")
+
+        submitted = st.form_submit_button(
+            "✅ Record Payment & Print Slip",
+            type="primary",
+            use_container_width=True
+        )
+
+        if submitted:
             if not member_id:
-                st.error("Select a member.")
+                st.error("Select a member first (use search above).")
             elif amount <= 0:
                 st.error("Amount must be positive.")
             elif not sel_mem:
@@ -108,11 +213,10 @@ def render(gym_id, role, current_user):
                     period_start=period_start, period_end=period_end,
                     collected_by=current_user, notes=notes
                 )
-                
+
                 if ok:
                     db.update_member(member_id, expiry_date=str(period_end), status="Active")
-                    
-                    # --- AUTO PRINT SYSTEM ---
+
                     generated_rcp = f"RCP-{uuid.uuid4().hex[:6].upper()}"
                     receipt_html = _generate_fee_receipt_html(
                         receipt_number=generated_rcp,
@@ -132,10 +236,9 @@ def render(gym_id, role, current_user):
                         </script>
                     """, height=0)
 
-                    # --- AUTOMATED AI MESSAGE TEMPLATE ---
                     ai_link = "https://gympro-ai.replit.app"
                     whatsapp_msg = f"Salam {sel_mem.full_name}, aapki fees (PKR {amount:,.2f}) receive ho gayi hai. Shukriya! \n\nApni progress aur diet plan yahan check karein: {ai_link}"
-                    
+
                     st.success(f"✅ {msg} · Membership extended to {period_end}!")
                     st.info("Copy this message for WhatsApp:")
                     st.code(whatsapp_msg, language="text")
@@ -143,8 +246,9 @@ def render(gym_id, role, current_user):
                 else:
                     st.error(msg)
 
-
     st.divider()
+
+    # 
 
     # ── SECTION 2: VIEW RECORDS ──────────────────────────────────────────────
     st.markdown("### 📋 Payment History & Records")
