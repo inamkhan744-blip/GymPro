@@ -1,5 +1,5 @@
 [server]
-port = 5000
+port = 8501
 headless = true
 address = "0.0.0.0"
 enableCORS = false
