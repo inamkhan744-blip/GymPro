@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 import uuid
+import sqlite3
 from PIL import Image
 from datetime import date, timedelta
 import database as db
@@ -46,14 +47,11 @@ def render(gym_id, role):
         st.info("Add a gym in **Gym Setup** first.")
         return
 
-    # --- TABS KI JAGAH CHANGE KAR DI (Register Member Pehle) ---
     tab_add, tab_list = st.tabs(["➕ Register Member", "📋 Member List"])
 
-    # --- REGISTER MEMBER TAB (Ab Yeh Pehle Open Hoga) ---
     with tab_add:
         _register_form(gyms, gym_id, role)
 
-    # --- MEMBER LIST TAB (Ab Yeh Baad Mein Open Hoga) ---
     with tab_list:
         f1, f2, f3, f4 = st.columns([2, 2, 1, 1])
         gym_opts = {g.name: g.id for g in gyms}
@@ -153,6 +151,33 @@ def _member_detail(m, gyms, role):
                 mime="image/png",
                 key=f"qr_dl_{m.id}",
             )
+
+    # ========== FACE REGISTRATION EXPANDER ==========
+    with st.expander("📸 Face Recognition Registration"):
+        st.info("Register member's face for automatic check-in")
+        
+        # Check if face already registered using PostgreSQL
+        try:
+            import psycopg2
+            import os as os_env
+            DATABASE_URL = os_env.environ.get('DATABASE_URL')
+            conn = psycopg2.connect(DATABASE_URL)
+            cursor = conn.cursor()
+            cursor.execute("SELECT face_encoding FROM members WHERE id = %s", (m.id,))
+            result = cursor.fetchone()
+            cursor.close()
+            conn.close()
+            
+            if result and result[0]:
+                st.success("✅ Face already registered for this member!")
+                if st.button("🔄 Re-register Face", key=f"rereg_face_{m.id}"):
+                    register_face_for_member(m.id)
+            else:
+                st.warning("⚠️ No face registered yet.")
+                register_face_for_member(m.id)
+        except Exception as e:
+            st.error(f"Database error: {e}")
+            register_face_for_member(m.id)
 
     if role in ("admin", "staff"):
         with st.expander("✏️ Edit Member"):
@@ -281,3 +306,60 @@ def _edit_form(m, gyms):
                 st.rerun()
             else:
                 st.error(msg)
+
+
+# ========== FACE REGISTRATION FUNCTION (PostgreSQL Compatible) ==========
+def register_face_for_member(member_id):
+    """Register face for existing member - PostgreSQL compatible"""
+    import tempfile
+    import os
+    import pickle
+    from deepface import DeepFace
+    import cv2
+    import psycopg2
+    
+    st.subheader("📸 Register Face")
+    st.info("Make sure good lighting and face is clearly visible")
+    
+    # Camera capture
+    picture = st.camera_input("Take a photo of member", key=f"face_cam_{member_id}")
+    
+    if picture:
+        temp_path = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False).name
+        with open(temp_path, 'wb') as f:
+            f.write(picture.getbuffer())
+        
+        with st.spinner("Processing face..."):
+            try:
+                # Extract face embedding
+                embedding = DeepFace.represent(
+                    img_path=temp_path,
+                    model_name='ArcFace',
+                    detector_backend='retinaface',
+                    enforce_detection=True
+                )[0]['embedding']
+                
+                # Convert to bytes for PostgreSQL
+                encoding_blob = pickle.dumps(embedding)
+                
+                # Save to PostgreSQL
+                import os as os_env
+                DATABASE_URL = os_env.environ.get('DATABASE_URL')
+                conn = psycopg2.connect(DATABASE_URL)
+                cursor = conn.cursor()
+                cursor.execute(
+                    "UPDATE members SET face_encoding = %s WHERE id = %s",
+                    (encoding_blob, member_id)
+                )
+                conn.commit()
+                cursor.close()
+                conn.close()
+                
+                st.success("✅ Face registered successfully!")
+                st.balloons()
+                st.rerun()
+            except Exception as e:
+                st.error(f"❌ No face detected or error: {e}")
+                st.info("Please take a clear photo with good lighting")
+        
+        os.unlink(temp_path)

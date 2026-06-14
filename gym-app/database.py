@@ -587,6 +587,8 @@ def add_member(gym_id, full_name, phone, email, gender, dob,
                        photo_path=photo_path, status=status, notes=notes)
             db.add(m)
             db.commit()
+# After db.commit() and before return
+            sync_to_local((m.id, serial, full_name, phone, email, gender, dob, photo_path, membership_type, fee_amount, str(join_date), str(expiry_date) if expiry_date else None, status, notes, None))
             return True, f"Member registered. Serial: {serial}", serial
         except IntegrityError as e:
             db.rollback()
@@ -598,6 +600,47 @@ def add_member(gym_id, full_name, phone, email, gender, dob,
         finally:
             db.close()
     return False, f"Could not allocate a unique serial number after retries: {last_err}", None
+
+def sync_to_local(member_data):
+    """Save member to local SQLite as backup"""
+    try:
+        local_conn = sqlite3.connect('gym_pro_backup_local.db')
+        local_cursor = local_conn.cursor()
+        
+        # Create table if not exists
+        local_cursor.execute('''
+            CREATE TABLE IF NOT EXISTS members (
+                id INTEGER PRIMARY KEY,
+                serial_number TEXT,
+                full_name TEXT,
+                phone TEXT,
+                email TEXT,
+                gender TEXT,
+                dob TEXT,
+                photo_path TEXT,
+                membership_type TEXT,
+                fee_amount REAL,
+                join_date TEXT,
+                expiry_date TEXT,
+                status TEXT,
+                notes TEXT,
+                face_encoding TEXT
+            )
+        ''')
+        
+        # Insert or update
+        local_cursor.execute('''
+            INSERT OR REPLACE INTO members 
+            (id, serial_number, full_name, phone, email, gender, dob, photo_path, membership_type, fee_amount, join_date, expiry_date, status, notes, face_encoding)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', member_data)
+        
+        local_conn.commit()
+        local_conn.close()
+        return True
+    except Exception as e:
+        print(f"Local sync error: {e}")
+        return False
 
 
 def update_member(member_id, **kwargs):

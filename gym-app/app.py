@@ -10,65 +10,8 @@ import database as db
 import auth
 import styles
 import base64
-#from ai_function import get_ai_response1111111
-
-def play_persistent_music():
-    music_file = "gym_music.mp3"
-
-    if not os.path.exists(music_file):
-        return
-
-    with open(music_file, "rb") as f:
-        audio_b64 = base64.b64encode(f.read()).decode()
-
-    st.markdown(
-        f"""
-        <audio id="globalGymMusic" controls loop>
-            <source src="data:audio/mp3;base64,{audio_b64}" type="audio/mp3">
-        </audio>
-
-        <script>
-        const audio = document.getElementById("globalGymMusic");
-
-        // Restore saved position
-        const savedTime = localStorage.getItem("gym_music_time");
-        if (savedTime) {{
-            audio.currentTime = parseFloat(savedTime);
-        }}
-
-        // Restore play state
-        const shouldPlay = localStorage.getItem("gym_music_playing");
-
-        if (shouldPlay === "true") {{
-            audio.play().catch(() => {{}});
-        }}
-
-        // Save current position every second
-        setInterval(() => {{
-            localStorage.setItem(
-                "gym_music_time",
-                audio.currentTime
-            );
-        }}, 1000);
-
-        audio.addEventListener("play", () => {{
-            localStorage.setItem(
-                "gym_music_playing",
-                "true"
-            );
-        }});
-
-        audio.addEventListener("pause", () => {{
-            localStorage.setItem(
-                "gym_music_playing",
-                "false"
-            );
-        }});
-        </script>
-        """,
-        unsafe_allow_html=True
-    )
-
+# -----------------------------------------
+#get_ai_response1111111
 
 import pandas as pd
 
@@ -96,11 +39,40 @@ from pages import (admin_dashboard, setup, members, attendance, fee_collection, 
 
 
 
-# Page Config (Sabse pehle)
 st.set_page_config(page_title="GymPro", page_icon="🏋️", layout="wide")
 db.init_db()
 styles.inject_css()
-play_persistent_music()
+
+# ----- SIMPLE FLOATING MUSIC PLAYER -----
+def add_floating_music_player():
+    music_file = "gym_music.mp3"
+    if os.path.exists(music_file):
+        try:
+            with open(music_file, "rb") as f:
+                audio_b64 = base64.b64encode(f.read()).decode()
+            st.markdown(f"""
+            <style>
+            .floating-music {{
+                position: fixed; bottom: 20px; right: 20px;
+                background: #1E293B; border-radius: 50px; padding: 8px 16px;
+                border: 1px solid #334155; z-index: 999;
+            }}
+            .floating-music audio {{ height: 35px; width: 200px; }}
+            @media (max-width: 600px) {{ .floating-music audio {{ width: 140px; }} }}
+            </style>
+            <div class="floating-music">
+                <audio controls loop>
+                    <source src="data:audio/mp3;base64,{audio_b64}" type="audio/mp3">
+                </audio>
+            </div>
+            """, unsafe_allow_html=True)
+        except:
+            pass
+add_floating_music_player()
+# ---------------------------------
+# ----- MUSIC PLAYER END -----
+
+# play_persistent_music()   <--- IS LINE KO COMMENT KARO YA DELETE KARO
 # ── Auth Gate ──
 if not auth.require_login():
     auth.login_page()

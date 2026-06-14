@@ -1,20 +1,48 @@
-"""Attendance page with AI Traffic & Prediction Insights.
-
-Three tabs:
-  • 🎯 QR Scan       — primary kiosk view, auto-focused input for USB scanner
-  • ✅ Mark Manually — bulk daily roll-call (existing manual flow)
-  • 📊 View Records  — read-only report
-"""
+"""Attendance page with AI Traffic & Prediction Insights."""
 import os
 import base64
 from datetime import date, datetime, timedelta
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
+import cv2
+import time
 
 import database as db
 import styles
 
+# ── FIX: Photo path helper ────────────────────────────────────────────────
+UPLOAD_DIR = "gym-app/uploads"
+
+def get_photo_path(filename):
+    """Convert filename to full path for display"""
+    if not filename:
+        return None
+    if os.path.exists(filename):
+        return filename
+    full_path = os.path.join(UPLOAD_DIR, filename)
+    return full_path if os.path.exists(full_path) else None
+
+def show_member_photo(photo_field, width=70):
+    """Safely display member photo"""
+    if photo_field:
+        path = get_photo_path(photo_field)
+        if path:
+            try:
+                st.image(path, width=width)
+                return True
+            except Exception:
+                pass
+    st.markdown(
+        f"""
+        <div style="width:{width}px; height:{width}px; border-radius:50%;
+                    background:#334155; display:flex;
+                    align-items:center; justify-content:center;
+                    font-size:{width//2}px; color:#94A3B8;">👤</div>
+        """,
+        unsafe_allow_html=True
+    )
+    return False
 
 # ── Audio (Web Audio API tone — no external files needed) ────────────────────
 _AUDIO_PRIMER_JS = """
@@ -66,13 +94,11 @@ def _tone_js(freq: int, dur_ms: int, wave: str, gain: float) -> str:
 </script>
 """
 
-_BEEP_JS = _tone_js(880, 180, "sine",   0.18)   # A5 chime — success
-_BUZZ_JS = _tone_js(180, 450, "square", 0.22)   # low growl — error
-
+_BEEP_JS = _tone_js(880, 180, "sine",   0.18)
+_BUZZ_JS = _tone_js(180, 450, "square", 0.22)
 
 def _play(kind: str):
     components.html(_BEEP_JS if kind == "beep" else _BUZZ_JS, height=0)
-
 
 def _autofocus_scan_input():
     components.html(
@@ -97,7 +123,6 @@ def _autofocus_scan_input():
         height=0,
     )
 
-
 def _big_banner(color_bg: str, color_border: str, headline: str,
                 subline: str = "", icon: str = ""):
     st.markdown(
@@ -116,7 +141,6 @@ def _big_banner(color_bg: str, color_border: str, headline: str,
         """,
         unsafe_allow_html=True,
     )
-
 
 def _process_scan(raw: str, gym_id, current_user) -> dict:
     serial = (raw or "").strip()
@@ -172,10 +196,8 @@ def _process_scan(raw: str, gym_id, current_user) -> dict:
         "member": member,
     }
 
-
 # ── AI PREDICTION LOGIC ──────────────────────────────────────────────────────
 def _get_ai_traffic_insights(recent_scans):
-    """AI logic jo historical scans (ya simulation pattern) se prediction nikalta hai"""
     now = datetime.now()
     current_hour = now.hour
 
@@ -198,57 +220,38 @@ def _get_ai_traffic_insights(recent_scans):
 
     normal_for_this_hour = historical_patterns.get(current_hour, 8)
 
-    if current_hour_count < normal_for_this_hour:
-        status_text = f"📉 Normal se kam rush hai ({current_hour_count} aaye hain, aam taur par {normal_for_this_hour} hote hain)"
-    elif current_hour_count > normal_for_this_hour:
-        status_text = f"🔥 Rush zyada hai! ({current_hour_count} aaye hain, aam taur par {normal_for_this_hour} hote hain)"
-    else:
-        status_text = f"✅ Rush normal hai ({current_hour_count} active members ho chuke hain)"
-
     return {
         "current_hour_string": now.strftime("%I:00 %p"),
         "next_hour_string": (now + timedelta(hours=1)).strftime("%I:00 %p"),
         "normal_average": normal_for_this_hour,
         "today_actual": current_hour_count,
         "next_predicted": next_hour_predicted,
-        "status_text": status_text
     }
 
-
-# ── NEW: AI SMART REGISTRATIONS, FEES AND 
+# ── AI SMART REGISTRATIONS, FEES ──────────────────────────────────────────────
 def render_ai_dashboard_intel(sel_gid):
     st.markdown("### 🤖 GymPro AI Smart Security & Analytics Intel")
     
-    # 1. Zaroori variables define karein
     from datetime import date
-    import os
-    import base64
     today_str = date.today().isoformat()
     
-    # 2. Fresh Data Fetch karein
     recent_scans = db.get_recent_scans(gym_id=sel_gid, limit=100, today_only=True)
     all_members = db.get_members(gym_id=sel_gid)
     active_members = [m for m in all_members if (m.status or '').lower() == 'active']
     todays_fees = db.get_todays_fees(gym_id=sel_gid)
     
-    # Expiring soon logic
     expiring_soon = [m for m in all_members if m.expiry_date and 
          (date.fromisoformat(m.expiry_date) - date.today()).days <= 7 and
          (date.fromisoformat(m.expiry_date) - date.today()).days >= 0]
 
     revenue_risk = len(expiring_soon) * 1500 
-    total_members_count = len(all_members)
-    active_members_count = len([m for m in all_members if (m.status or '').lower() == 'active'])
 
-
-    # 3. AI Summary Render
     col_text1, col_text2 = st.columns(2)
     with col_text1:
         st.info(f"✍️ **AI Registration Summary:**\n\nIs waqt total **{len(all_members)} members** registered hain, jin mein se **{len(active_members)} active** hain.")
     with col_text2:
         st.success(f"💰 **AI Fee Collection Summary:**\n\nAaj ki total collection: **PKR {sum(todays_fees) if todays_fees else 0:,}**.")
 
-    # 4. Fraud Monitoring Panel
     st.markdown("#### 🚨 Fraud & Security Monitor")
     fraud_members = []
     
@@ -259,15 +262,14 @@ def render_ai_dashboard_intel(sel_gid):
                 if member_match.expiry_date < today_str and member_match.id not in [m.id for m in fraud_members]:
                     fraud_members.append(member_match)
 
-    # RENDER: Sirf ek baar logic chalayein
     if fraud_members:
         st.error(f"🚨 ALERT: Aaj counter par {len(fraud_members)} Unpaid Members ko entry di gayi hai!")
         with st.expander("🔍 Click karein aur Unpaid Members ke Naam aur Pictures dekhein"):
             for m in fraud_members:
-                photo_html = ""
-                if m.photo_path and os.path.exists(m.photo_path):
+                photo_path = get_photo_path(m.photo_path)
+                if photo_path:
                     try:
-                        with open(m.photo_path, "rb") as f:
+                        with open(photo_path, "rb") as f:
                             encoded = base64.b64encode(f.read()).decode()
                         photo_html = f'<img src="data:image/jpeg;base64,{encoded}" style="width:60px; height:60px; border-radius:50%; object-fit:cover; border:2px solid #EF4444; margin-right:15px;">'
                     except:
@@ -290,8 +292,6 @@ def render_ai_dashboard_intel(sel_gid):
     else:
         st.success("✅ **AI Security Audit:** Clear! Aaj koi unpaid member entry nahi le paya.")
 
-
-    # 3. Traffic Reality & Future Revenue Risk
     st.markdown("#### 🔮 Business Projections & Live Risk Matrix")
     ai_traffic = _get_ai_traffic_insights(recent_scans)
 
@@ -315,6 +315,51 @@ def render_ai_dashboard_intel(sel_gid):
     st.divider()
 
 
+def render_face_tab():
+    st.subheader("📸 Live Face Check-in")
+    st.info("🎥 Camera will start automatically. Show your face to check in.")
+    
+    camera_option = st.radio(
+        "Select Camera:",
+        ["💻 Laptop Webcam", "🔌 USB Camera"],
+        horizontal=True,
+        key="face_cam_select"
+    )
+    
+    source = 0 if camera_option == "💻 Laptop Webcam" else 1
+    
+    # Auto-start camera when tab opens
+    try:
+        cap = cv2.VideoCapture(source)
+        if not cap.isOpened():
+            st.error("❌ Camera not found! Check connection.")
+        else:
+            st.success("✅ Camera started automatically!")
+            frame_placeholder = st.empty()
+            status_placeholder = st.empty()
+            stop_placeholder = st.empty()
+            stop = False
+            
+            while not stop:
+                ret, frame = cap.read()
+                if ret:
+                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    frame_placeholder.image(frame_rgb, channels="RGB", use_container_width=True)
+                    status_placeholder.info("👀 Camera ON - Face check-in active")
+                    time.sleep(0.1)
+                else:
+                    status_placeholder.error("Camera error")
+                    break
+                
+                with stop_placeholder.container():
+                    if st.button("⏹️ Stop Camera", key="stop_cam_btn", use_container_width=True):
+                        stop = True
+            
+            cap.release()
+            st.info("Camera stopped.")
+    except Exception as e:
+        st.error(f"Camera error: {e}")
+
 # ── Page ─────────────────────────────────────────────────────────────────────
 def render(gym_id, role, current_user):
     styles.page_header("📅", "Daily Attendance Controls",
@@ -325,8 +370,9 @@ def render(gym_id, role, current_user):
         st.info("Add a gym first.")
         return
 
-    tab_scan, tab_manual, tab_view = st.tabs(
-        ["🎯 QR Scan & Main Dashboard AI", "✅ Mark Manually", "📊 View Records"]
+    # 4 TABS - including Face Check-in
+    tab_scan, tab_manual, tab_face, tab_view = st.tabs(
+        ["🎯 QR Scan & Main Dashboard AI", "✅ Mark Manually", "📸 Face Check-in", "📊 View Records"]
     )
 
     # ── QR Scan & Main Dashboard Intel Tab ───────────────────────────────────
@@ -351,10 +397,8 @@ def render(gym_id, role, current_user):
                             icon="✅")
                 _play("beep")
                 m = last.get("member")
-                if m and m.photo_path and os.path.exists(m.photo_path):
-                    pc1, pc2, pc3 = st.columns([2, 1, 2])
-                    with pc2:
-                        st.image(m.photo_path, width=160)
+                if m:
+                    show_member_photo(m.photo_path, width=160)
                 if m:
                     st.caption(
                         f"Serial **{m.serial_number}** · "
@@ -366,10 +410,8 @@ def render(gym_id, role, current_user):
                             last["sub"], icon="🚫")
                 _play("buzz")
                 m = last.get("member")
-                if m and m.photo_path and os.path.exists(m.photo_path):
-                    pc1, pc2, pc3 = st.columns([2, 1, 2])
-                    with pc2:
-                        st.image(m.photo_path, width=160)
+                if m:
+                    show_member_photo(m.photo_path, width=160)
             else:
                 _big_banner("#7F1D1D", "#EF4444",
                             last["headline"], last["sub"], icon="❌")
@@ -392,16 +434,11 @@ def render(gym_id, role, current_user):
             st.rerun()
 
         _autofocus_scan_input()
-
         st.divider()
-
-        # ── 🔥 CALLING THE MAIN DASHBOARD AI INTEL PANEL 🔥 ──
         render_ai_dashboard_intel(sel_gid)
 
-        # Data fetch for Live counter and AI Analysis
         recent = db.get_recent_scans(gym_id=sel_gid, limit=100, today_only=True)
 
-        # ── LIVE COUNTER SECTION (🟢 Inside Gym Right Now) ──
         st.markdown("##### 🟢 Inside Gym Right Now (Active 2-Hour Window)")
         inside_now = []
         now = datetime.now()
@@ -429,7 +466,6 @@ def render(gym_id, role, current_user):
 
         st.write("") 
 
-        # ── TOTAL HISTORY SECTION (📋 Today's All Records) ──
         st.markdown("##### 📋 Today's Full Attendance History")
         if not recent:
             st.caption("No check-ins yet today.")
@@ -442,11 +478,10 @@ def render(gym_id, role, current_user):
             st.dataframe(df_all, use_container_width=True, hide_index=True,
                          height=min(200, 50 + 35 * len(recent)))
 
-    # ── Mark Manually (existing bulk flow) ────────────────────────────────────
-    # ── Mark Manually (Modified) ────────────────────────────────────────────
+    # ── Mark Manually (Picture + 3 Buttons + Auto-Remove) ───────────────────
     with tab_manual:
-        c1, c2, c3 = st.columns(3) 
-        
+        c1, c2, c3 = st.columns(3)
+
         with c1:
             if gym_id:
                 gname = next((g.name for g in gyms if g.id == gym_id), gyms[0].name)
@@ -458,54 +493,231 @@ def render(gym_id, role, current_user):
 
         with c2:
             att_date = st.date_input("Attendance Date", value=date.today(), key="att_date")
-            
+
         with c3:
-            # Yeh naya filter option hai
-            hide_present = st.checkbox("Hide already marked", value=False)
+            st.write("")
+            st.write("")
+            if st.button("🔄 Reset Today's Marks", use_container_width=True,
+                         help="Aaj ke marked members ko dobara list mein laayein"):
+                st.session_state.pop(f"marked_today_{sel_gid}_{att_date}", None)
+                st.rerun()
 
-        members = db.get_members(gym_id=sel_gid, status="Active")
-        if not members:
-            st.info("No active members for this gym.")
+        all_active_members = db.get_members(gym_id=sel_gid, status="Active")
+        existing = {a.member_id: a.status for a in
+                    db.get_attendance(gym_id=sel_gid, check_date=att_date)}
+
+        session_key = f"marked_today_{sel_gid}_{att_date}"
+        if session_key not in st.session_state:
+            st.session_state[session_key] = set(existing.keys())
+
+        marked_ids = st.session_state[session_key]
+        pending_members = [m for m in all_active_members if m.id not in marked_ids]
+        marked_members = [m for m in all_active_members if m.id in marked_ids]
+
+        s1, s2, s3, s4 = st.columns(4)
+        total = len(all_active_members)
+        done = len(marked_members)
+        remaining = len(pending_members)
+        progress = (done / total * 100) if total > 0 else 0
+
+        with s1:
+            st.markdown(styles.metric_card("Total Active", total,
+                                           "Members", "purple"), unsafe_allow_html=True)
+        with s2:
+            st.markdown(styles.metric_card("✅ Marked", done,
+                                           f"{progress:.0f}% done", "green"), unsafe_allow_html=True)
+        with s3:
+            st.markdown(styles.metric_card("⏳ Pending", remaining,
+                                           "Abhi baqi hain", "amber"), unsafe_allow_html=True)
+        with s4:
+            present_count = sum(1 for mid, s in existing.items() if s == "Present")
+            st.markdown(styles.metric_card("🟢 Present", present_count,
+                                           "Aaj aaye", "blue"), unsafe_allow_html=True)
+
+        if total > 0:
+            st.progress(done / total, text=f"Progress: {done}/{total} members marked")
+
+        st.divider()
+
+        search_col, info_col = st.columns([2, 1])
+        with search_col:
+            search_q = st.text_input("🔍 Search member",
+                                     placeholder="Name ya Serial number...",
+                                     key="manual_att_search",
+                                     label_visibility="collapsed")
+        with info_col:
+            st.caption(f"💡 Mark karte jayein — naam list se hat jayega")
+
+        if search_q:
+            q = search_q.lower()
+            pending_members = [m for m in pending_members
+                               if q in m.full_name.lower()
+                               or q in (m.serial_number or "").lower()]
+
+        st.markdown(f"### 📋 Pending Members ({len(pending_members)})")
+
+        if not pending_members:
+            if remaining == 0:
+                st.success("🎉 Sab members ki attendance mark ho gayi hai! Shabash!")
+            else:
+                st.info("Search se koi member match nahi hua.")
         else:
-            existing = {a.member_id: a.status for a in db.get_attendance(gym_id=sel_gid, check_date=att_date)}
+            for m in pending_members:
+                with st.container():
+                    col_pic, col_info, col_p, col_a, col_l = st.columns([1, 3, 1.2, 1.2, 1.2])
 
-            # Yahan hum list ko filter karenge agar checkbox tick hai
-            if hide_present:
-                members = [m for m in members if existing.get(m.id) != "Present"]
+                    with col_pic:
+                        show_member_photo(m.photo_path, width=70)
 
-            st.markdown(f"**{len(members)} member(s) to process**")
-            st.divider()
-
-            with st.form("attendance_mark_form"):
-                attendance_data = {}
-                for m in members:
-                    cur = existing.get(m.id, "Present")
-                    col_name, col_status = st.columns([3, 1])
-                    with col_name:
-                        st.markdown(f"**{m.serial_number}** — {m.full_name}")
-                    with col_status:
-                        attendance_data[m.id] = st.selectbox(
-                            "Status",
-                            ["Present", "Absent", "Late", "Excused"],
-                            index=["Present", "Absent", "Late", "Excused"]
-                                  .index(cur)
-                                  if cur in ["Present", "Absent", "Late", "Excused"] else 0,
-                            key=f"att_status_{m.id}",
-                            label_visibility="collapsed",
+                    with col_info:
+                        st.markdown(
+                            f"""
+                            <div style="padding-top:8px;">
+                                <div style="font-size:1.1rem; font-weight:700; color:#F8FAFC;">
+                                    {m.full_name}
+                                </div>
+                                <div style="font-size:0.85rem; color:#94A3B8;">
+                                    🆔 {m.serial_number} · {m.membership_type or 'N/A'}
+                                </div>
+                                <div style="font-size:0.8rem; color:#64748B;">
+                                    📞 {m.phone or '—'}
+                                </div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True
                         )
 
-                if st.form_submit_button("💾 Save Attendance", type="primary", use_container_width=True):
-                    errors = []
-                    for mid, status in attendance_data.items():
-                        ok, msg = db.mark_attendance(mid, sel_gid, att_date, status, current_user)
-                        if not ok:
-                            errors.append(msg)
-                    if errors:
-                        st.error("\n".join(errors))
-                    else:
-                        st.success(f"Attendance saved for {len(attendance_data)} members.")
-                        st.rerun() # Page refresh taake filter apply ho jaye
+                    with col_p:
+                        st.write("")
+                        if st.button("✅ Present", key=f"p_{m.id}",
+                                     use_container_width=True, type="primary"):
+                            ok, msg = db.mark_attendance(m.id, sel_gid, att_date,
+                                                         "Present", current_user)
+                            if ok:
+                                st.session_state[session_key].add(m.id)
+                                st.toast(f"✅ {m.full_name} marked Present", icon="✅")
+                                st.rerun()
+                            else:
+                                st.error(msg)
 
+                    with col_a:
+                        st.write("")
+                        if st.button("❌ Absent", key=f"a_{m.id}",
+                                     use_container_width=True):
+                            ok, msg = db.mark_attendance(m.id, sel_gid, att_date,
+                                                         "Absent", current_user)
+                            if ok:
+                                st.session_state[session_key].add(m.id)
+                                st.toast(f"❌ {m.full_name} marked Absent", icon="❌")
+                                st.rerun()
+                            else:
+                                st.error(msg)
+
+                    with col_l:
+                        st.write("")
+                        if st.button("🕐 Late", key=f"l_{m.id}",
+                                     use_container_width=True):
+                            ok, msg = db.mark_attendance(m.id, sel_gid, att_date,
+                                                         "Late", current_user)
+                            if ok:
+                                st.session_state[session_key].add(m.id)
+                                st.toast(f"🕐 {m.full_name} marked Late", icon="🕐")
+                                st.rerun()
+                            else:
+                                st.error(msg)
+
+                    st.markdown(
+                        "<hr style='margin:0.5rem 0; border-color:#1E293B;'>",
+                        unsafe_allow_html=True
+                    )
+
+        if marked_members:
+            st.divider()
+            with st.expander(f"✅ Already Marked Today ({len(marked_members)}) — Click to view"):
+                marked_rows = []
+                for m in marked_members:
+                    status = existing.get(m.id, "—")
+                    status_emoji = {
+                        "Present": "✅ Present",
+                        "Absent": "❌ Absent",
+                        "Late": "🕐 Late",
+                        "Excused": "📝 Excused"
+                    }.get(status, status)
+
+                    marked_rows.append({
+                        "Serial": m.serial_number,
+                        "Name": m.full_name,
+                        "Status": status_emoji,
+                        "Type": m.membership_type or "—",
+                    })
+
+                st.dataframe(pd.DataFrame(marked_rows),
+                             use_container_width=True, hide_index=True)
+
+                st.caption("💡 Galti se mark kiya? Upar **'🔄 Reset Today's Marks'** button dabayein.")
+
+# ========== TAB 3: FACE CHECK-IN (WITH WiFi Camera) ==========
+    with tab_face:
+        st.subheader("📸 Live Face Check-in")
+    st.info("🎥 Camera will start automatically. Show your face to check in.")
+    
+    camera_source = st.radio(
+        "Select Camera:", 
+        ["💻 Laptop Webcam", "🔌 USB Camera", "📱 WiFi/IP Camera"],
+        horizontal=True
+    )
+    
+    ip_url = None
+    source = None
+    
+    if camera_source == "💻 Laptop Webcam":
+        source = 0
+    elif camera_source == "🔌 USB Camera":
+        source = 1
+    else:
+        ip_url = st.text_input(
+            "Enter IP Camera URL:", 
+            placeholder="http://192.168.100.4:8080/vide",
+            help="Get this from IP Webcam app on your phone"
+        )
+        if ip_url:
+            source = ip_url
+    
+    if st.button("🎥 Start Camera", use_container_width=True):
+        if camera_source == "📱 WiFi/IP Camera" and not ip_url:
+            st.error("❌ Please enter IP Camera URL first!")
+        elif source is None:
+            st.error("❌ Please select/enter camera source!")
+        else:
+            try:
+                import cv2
+                cap = cv2.VideoCapture(source)
+                if not cap.isOpened():
+                    st.error("❌ Camera not found! Check connection.")
+                else:
+                    st.success("✅ Camera started!")
+                    frame_placeholder = st.empty()
+                    stop_placeholder = st.empty()
+                    stop = False
+                    
+                    while not stop:
+                        ret, frame = cap.read()
+                        if ret:
+                            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                            frame_placeholder.image(frame_rgb, channels="RGB", use_container_width=True)
+                            time.sleep(0.1)
+                        else:
+                            st.error("Camera error")
+                            break
+                        
+                        with stop_placeholder.container():
+                            if st.button("⏹️ Stop Camera", key="stop_cam_btn", use_container_width=True):
+                                stop = True
+                    
+                    cap.release()
+                    st.info("Camera stopped.")
+            except Exception as e:
+                st.error(f"Camera error: {e}")
 
     # ── View Records ──────────────────────────────────────────────────────────
     with tab_view:
